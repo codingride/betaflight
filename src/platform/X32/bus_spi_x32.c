@@ -62,6 +62,11 @@ FAST_IRQ_HANDLER static void spiRxIrqHandler(dmaChannelDescriptor_t *descriptor)
         return;
     }
 
+    if (DMA_GET_FLAG_STATUS(descriptor, DMA_IT_TEIF)) {
+        spiAbortTransfer(dev);
+        return;
+    }
+
     busDevice_t *bus = dev->bus;
 
     if (bus->curSegment->negateCS) {
@@ -217,6 +222,8 @@ void spiInitDevice(spiDevice_e device)
     IOConfigGPIOAF(IOGetByTag(spi->sck), SPI_IO_AF_SCK_CFG, spi->sckAF);
     IOConfigGPIOAF(IOGetByTag(spi->miso), SPI_IO_AF_SDI_CFG, spi->misoAF);
     IOConfigGPIOAF(IOGetByTag(spi->mosi), SPI_IO_AF_CFG, spi->mosiAF);
+    /*Enable all SPI mode , not I2S mode*/
+    AFIO_ConfigSPII2SMode(0x1E000000,SPI_MODE);
 
     SPI_I2S_DeInit(instance);
     spiApplyConfig(instance, 8, false);
@@ -482,6 +489,11 @@ void spiInternalStopDMA(const extDevice_t *dev)
     if (dmaRx) {
         SPI_I2S_EnableDma(instance, SPI_I2S_DMA_RX, DISABLE);
     }
+}
+
+void spiInternalAbortDMA(const extDevice_t *dev)
+{
+    spiInternalStopDMA(dev);
 }
 
 bool spiInternalReadWriteBufPolled(spiResource_t *resource, const uint8_t *txData, uint8_t *rxData, int len)

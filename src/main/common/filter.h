@@ -70,7 +70,7 @@ typedef struct svfLowpassFilter_s {
 typedef struct svfNotchFilter_s {
     float a1;
     float a2q;  // a2 * q
-    float fq;   // f / q
+    float fq;   // f * Q
     float ic1q; // State 1 scaled by q
     float ic2;  // State 2 (unscaled)
 } svfNotchFilter_t;
@@ -153,6 +153,7 @@ void rpmNotchApply(rpmNotch_t *filter, float input[3]);
 void phaseCompInit(phaseComp_t *filter, const float centerFreq, const float centerPhase, const uint32_t looptimeUs);
 void phaseCompUpdate(phaseComp_t *filter, const float centerFreq, const float centerPhase, const uint32_t looptimeUs);
 float phaseCompApply(phaseComp_t *filter, const float input);
+void phaseCompReset(phaseComp_t *filter);
 
 void slewFilterInit(slewFilter_t *filter, float slewLimit, float threshold);
 float slewFilterApply(slewFilter_t *filter, float input);

@@ -120,13 +120,14 @@ void spiInitDevice(spiDevice_e device)
     RCC_ResetCmd(spi->rcc, ENABLE);
 
 #ifdef STM32C5
-    if (dev == SPI1) {
-        LL_RCC_SetSPIClockSource(LL_RCC_SPI1_CLKSOURCE_HSIK);
-    } else if (dev == SPI2) {
-        LL_RCC_SetSPIClockSource(LL_RCC_SPI2_CLKSOURCE_HSIK);
-    } else if (dev == SPI3) {
-        LL_RCC_SetSPIClockSource(LL_RCC_SPI3_CLKSOURCE_HSIK);
-    }
+    // STM32C5: leave SPI kernel clock at PCLK (default after reset). HSIK
+    // selection on SPI3 leaves CTSIZE pinned at TSIZE -- the peripheral
+    // never decrements the transfer counter, EOT never asserts, and the
+    // controller appears to "transmit" via FIFO drain but no SCK reaches
+    // the pad. Reproduced under SWD on ARCROBO_C562V1: with SPI3SEL=10
+    // (HSIK) a manual WHO_AM_I transaction sticks at SR=0x00020012,
+    // CTSIZE=2; flipping SPI3SEL=00 (PCLK1) on the same configuration
+    // immediately advances to SR.EOT=1.
 #endif
 
     IOInit(IOGetByTag(spi->sck),  OWNER_SPI_SCK, RESOURCE_INDEX(device));
@@ -308,6 +309,7 @@ void spiInternalStartDMA(const extDevice_t *dev)
 
     // Use the correct callback argument
     dmaRx->userParam = (uint32_t)dev;
+    dmaTx->userParam = (uint32_t)dev;
 
     // Clear transfer flags
     DMA_CLEAR_FLAG(dmaTx, DMA_IT_HTIF | DMA_IT_TEIF | DMA_IT_TCIF);
@@ -331,6 +333,8 @@ void spiInternalStartDMA(const extDevice_t *dev)
 
     // Enable RX TC interrupt (fires when SPI operation is fully complete)
     LL_DMA_EnableIT_TC(chRx);
+    LL_DMA_EnableIT_DTE(chRx);
+    LL_DMA_EnableIT_DTE(chTx);
 
     // Setup SPI transfer size, enable DMA channels, then SPI
     LL_SPI_SetTransferSize(instance, dev->bus->curSegment->len);
@@ -360,6 +364,18 @@ void spiInternalStopDMA(const extDevice_t *dev)
     LL_SPI_DisableDMAReq_RX(instance);
     LL_SPI_ClearFlag_TXTF(instance);
     LL_SPI_Disable(instance);
+}
+
+void spiInternalAbortDMA(const extDevice_t *dev)
+{
+    SPI_TypeDef *instance = (SPI_TypeDef *)dev->bus->busType_u.spi.instance;
+
+    spiInternalStopDMA(dev);
+
+    LL_SPI_ClearFlag_EOT(instance);
+    LL_SPI_ClearFlag_OVR(instance);
+    LL_SPI_ClearFlag_UDR(instance);
+    LL_SPI_ClearFlag_MODF(instance);
 }
 
 // DMA transfer setup and start
